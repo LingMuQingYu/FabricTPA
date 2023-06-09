@@ -41,42 +41,50 @@ public class FabricTPA implements ModInitializer {
 
     private final ArrayList<TPARequest> activeTPA = new ArrayList<>();
     private final HashMap<UUID, Long> recentRequests = new HashMap<>();
+    private final HashMap<UUID, WorldCoordinate> backWorldCoordinate = new HashMap<>();
     private ConfigUtils config;
 
     @Nullable
-    private static CompletableFuture<Suggestions> filterSuggestionsByInput(SuggestionsBuilder builder, List<String> values) {
+    private static CompletableFuture<Suggestions> filterSuggestionsByInput(SuggestionsBuilder builder,
+            List<String> values) {
         String start = builder.getRemaining().toLowerCase();
         values.stream().filter(s -> s.toLowerCase().startsWith(start)).forEach(builder::suggest);
         return builder.buildFuture();
     }
 
-    private CompletableFuture<Suggestions> getTPAInitSuggestions(CommandContext<ServerCommandSource> context, SuggestionsBuilder builder) {
+    private CompletableFuture<Suggestions> getTPAInitSuggestions(CommandContext<ServerCommandSource> context,
+            SuggestionsBuilder builder) {
         ServerCommandSource scs = context.getSource();
 
         List<String> activeTargets = Stream.concat(
                 activeTPA.stream().map(tpaRequest -> tpaRequest.rTo.getEntityName()),
-                activeTPA.stream().map(tpaRequest -> tpaRequest.rFrom.getEntityName())
-        ).toList();
+                activeTPA.stream().map(tpaRequest -> tpaRequest.rFrom.getEntityName())).toList();
         List<String> others = Arrays.stream(scs.getServer().getPlayerNames())
                 .filter(s -> !s.equals(scs.getName()) && !activeTargets.contains(s))
                 .collect(Collectors.toList());
         return filterSuggestionsByInput(builder, others);
     }
 
-    private CompletableFuture<Suggestions> getTPATargetSuggestions(CommandContext<ServerCommandSource> context, SuggestionsBuilder builder) {
-        List<String> activeTargets = activeTPA.stream().map(tpaRequest -> tpaRequest.rFrom.getEntityName()).collect(Collectors.toList());
+    private CompletableFuture<Suggestions> getTPATargetSuggestions(CommandContext<ServerCommandSource> context,
+            SuggestionsBuilder builder) {
+        List<String> activeTargets = activeTPA.stream().map(tpaRequest -> tpaRequest.rFrom.getEntityName())
+                .collect(Collectors.toList());
         return filterSuggestionsByInput(builder, activeTargets);
     }
 
-    private CompletableFuture<Suggestions> getTPASenderSuggestions(CommandContext<ServerCommandSource> context, SuggestionsBuilder builder) {
-        List<String> activeTargets = activeTPA.stream().map(tpaRequest -> tpaRequest.rTo.getEntityName()).collect(Collectors.toList());
+    private CompletableFuture<Suggestions> getTPASenderSuggestions(CommandContext<ServerCommandSource> context,
+            SuggestionsBuilder builder) {
+        List<String> activeTargets = activeTPA.stream().map(tpaRequest -> tpaRequest.rTo.getEntityName())
+                .collect(Collectors.toList());
         return filterSuggestionsByInput(builder, activeTargets);
     }
 
     static class CooldownModeConfigValue extends ConfigUtils.IConfigValue<TPACooldownMode> {
-        public CooldownModeConfigValue(@NotNull String name, TPACooldownMode defaultValue, @Nullable ConfigUtils.Command command) {
+        public CooldownModeConfigValue(@NotNull String name, TPACooldownMode defaultValue,
+                @Nullable ConfigUtils.Command command) {
             super(name, defaultValue, null, command, (context, builder) -> {
-                List<String> tcmValues = Arrays.stream(TPACooldownMode.values()).map(String::valueOf).collect(Collectors.toList());
+                List<String> tcmValues = Arrays.stream(TPACooldownMode.values()).map(String::valueOf)
+                        .collect(Collectors.toList());
                 return filterSuggestionsByInput(builder, tcmValues);
             });
         }
@@ -101,18 +109,23 @@ public class FabricTPA implements ModInitializer {
     public void onInitialize() {
         logger.info("Initializing...");
 
-        config = new ConfigUtils(FabricLoader.getInstance().getConfigDir().resolve(CONFIG_NAME).toFile(), logger, Arrays.asList(new ConfigUtils.IConfigValue[] {
-                new ConfigUtils.IntegerConfigValue("timeout", 60, new ConfigUtils.IntegerConfigValue.IntLimits(0),
-                        new ConfigUtils.Command("Timeout is %s seconds", "Timeout set to %s seconds")),
-                new ConfigUtils.IntegerConfigValue("stand-still", 5, new ConfigUtils.IntegerConfigValue.IntLimits(0),
-                        new ConfigUtils.Command("Stand-Still time is %s seconds", "Stand-Still time set to %s seconds")),
-                new ConfigUtils.IntegerConfigValue("cooldown", 5, new ConfigUtils.IntegerConfigValue.IntLimits(0),
-                        new ConfigUtils.Command("Cooldown is %s seconds", "Cooldown set to %s seconds")),
-                new ConfigUtils.BooleanConfigValue("bossbar", true,
-                        new ConfigUtils.Command("Boss-Bar on: %s", "Boss-Bar is now: %s")),
-                new CooldownModeConfigValue("cooldown-mode", TPACooldownMode.WhoTeleported,
-                        new ConfigUtils.Command("Cooldown Mode is %s", "Cooldown Mode set to %s"))
-        }));
+        config = new ConfigUtils(FabricLoader.getInstance().getConfigDir().resolve(CONFIG_NAME).toFile(), logger,
+                Arrays.asList(new ConfigUtils.IConfigValue[] {
+                        new ConfigUtils.IntegerConfigValue("timeout", 60,
+                                new ConfigUtils.IntegerConfigValue.IntLimits(0),
+                                new ConfigUtils.Command("Timeout is %s seconds", "Timeout set to %s seconds")),
+                        new ConfigUtils.IntegerConfigValue("stand-still", 5,
+                                new ConfigUtils.IntegerConfigValue.IntLimits(0),
+                                new ConfigUtils.Command("Stand-Still time is %s seconds",
+                                        "Stand-Still time set to %s seconds")),
+                        new ConfigUtils.IntegerConfigValue("cooldown", 5,
+                                new ConfigUtils.IntegerConfigValue.IntLimits(0),
+                                new ConfigUtils.Command("Cooldown is %s seconds", "Cooldown set to %s seconds")),
+                        new ConfigUtils.BooleanConfigValue("bossbar", true,
+                                new ConfigUtils.Command("Boss-Bar on: %s", "Boss-Bar is now: %s")),
+                        new CooldownModeConfigValue("cooldown-mode", TPACooldownMode.WhoTeleported,
+                                new ConfigUtils.Command("Cooldown Mode is %s", "Cooldown Mode set to %s"))
+                }));
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
             dispatcher.register(literal("tpa")
@@ -142,7 +155,9 @@ public class FabricTPA implements ModInitializer {
                     .then(argument("target", EntityArgumentType.player()).suggests(this::getTPASenderSuggestions)
                             .executes(ctx -> tpaCancel(ctx, getPlayer(ctx, "target"))))
                     .executes(ctx -> tpaCancel(ctx, null)));
-
+            dispatcher.register(literal("back")
+                    .requires(FPAPIUtilsWrapper.require("fabrictpa.tpa", true))
+                    .executes(ctx -> tpaBack(ctx)));
             dispatcher.register(config.generateCommand("tpaconfig", FPAPIUtilsWrapper.require("fabrictpa.config", 2)));
         });
 
@@ -152,100 +167,128 @@ public class FabricTPA implements ModInitializer {
         final ServerPlayerEntity tFrom = ctx.getSource().getPlayer();
 
         if (tFrom.equals(tTo)) {
-            tFrom.sendMessage(Text.literal("You cannot request to teleport to yourself!").formatted(Formatting.RED), false);
+            tFrom.sendMessage(Text.literal("你不能请求传送到你自己位置!").formatted(Formatting.RED), false);
             return 1;
         }
 
-        if (checkCooldown(tFrom)) return 1;
+        if (checkCooldown(tFrom))
+            return 1;
 
         TPARequest tr = new TPARequest(tFrom, tTo, false, (int) config.getValue("timeout") * 1000);
         if (activeTPA.stream().anyMatch(tpaRequest -> tpaRequest.equals(tr))) {
-            tFrom.sendMessage(Text.literal("There is already an ongoing request like this!").formatted(Formatting.RED), false);
+            tFrom.sendMessage(Text.literal("已有一个正在进行的请求!").formatted(Formatting.RED), false);
             return 1;
         }
         tr.setTimeoutCallback(() -> {
             activeTPA.remove(tr);
-            tFrom.sendMessage(Text.literal("Your teleport request to " + tTo.getEntityName() + " has timed out!").formatted(Formatting.RED), false);
-            tTo.sendMessage(Text.literal("Teleport request from " + tFrom.getEntityName() + " has timed out!").formatted(Formatting.RED), false);
+            tFrom.sendMessage(Text.literal("你传送到[" + tTo.getEntityName() + "]的请求已经超时!").formatted(Formatting.RED),
+                    false);
+            tTo.sendMessage(Text.literal("[" + tFrom.getEntityName() + "] 的传送请求已超时!").formatted(Formatting.RED), false);
         });
         activeTPA.add(tr);
 
         tFrom.sendMessage(
-                Text.literal("You have requested to teleport to ").formatted(Formatting.LIGHT_PURPLE)
+                Text.literal("你请求传送到 ").formatted(Formatting.LIGHT_PURPLE)
                         .append(Text.literal(tTo.getEntityName()).formatted(Formatting.AQUA))
-                        .append(Text.literal("\nTo cancel type ").formatted(Formatting.LIGHT_PURPLE))
-                        .append(Text.literal("/tpacancel [<player>]").styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpacancel " + tTo.getEntityName()))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpacancel " + tTo.getEntityName())))
+                        .append(Text.literal("\n取消输入指令 ").formatted(Formatting.LIGHT_PURPLE))
+                        .append(Text.literal("/tpacancel [<player>]")
+                                .styled(s -> s
+                                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                                "/tpacancel " + tTo.getEntityName()))
+                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                                Text.literal("/tpacancel " + tTo.getEntityName())))
                                         .withColor(Formatting.GOLD)))
-                        .append(Text.literal("\nThis request will timeout in " + config.getValue("timeout") + " seconds.").formatted(Formatting.LIGHT_PURPLE)),
+                        .append(Text.literal("\n此请求将在 " + config.getValue("timeout") + " 秒后超时.")
+                                .formatted(Formatting.LIGHT_PURPLE)),
                 false);
 
         tTo.sendMessage(
                 Text.literal(tFrom.getEntityName()).formatted(Formatting.AQUA)
-                        .append(Text.literal(" has requested to teleport to you!").formatted(Formatting.LIGHT_PURPLE))
-                        .append(Text.literal("\nTo accept type ").formatted(Formatting.LIGHT_PURPLE))
-                        .append(Text.literal("/tpaaccept [<player>]").styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpaaccept " + tFrom.getEntityName()))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpaaccept " + tFrom.getEntityName())))
+                        .append(Text.literal(" 请求传送到你的位置!").formatted(Formatting.LIGHT_PURPLE))
+                        .append(Text.literal("\n接受指令 ").formatted(Formatting.LIGHT_PURPLE))
+                        .append(Text.literal("/tpaaccept [<player>]")
+                                .styled(s -> s
+                                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                                "/tpaaccept " + tFrom.getEntityName()))
+                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                                Text.literal("/tpaaccept " + tFrom.getEntityName())))
                                         .withColor(Formatting.GOLD)))
-                        .append(Text.literal("\nTo deny type ").formatted(Formatting.LIGHT_PURPLE))
-                        .append(Text.literal("/tpadeny [<player>]").styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpadeny " + tFrom.getEntityName()))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpadeny " + tFrom.getEntityName())))
+                        .append(Text.literal("\n拒绝指令 ").formatted(Formatting.LIGHT_PURPLE))
+                        .append(Text.literal("/tpadeny [<player>]")
+                                .styled(s -> s
+                                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                                "/tpadeny " + tFrom.getEntityName()))
+                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                                Text.literal("/tpadeny " + tFrom.getEntityName())))
                                         .withColor(Formatting.GOLD)))
-                        .append(Text.literal("\nThis request will timeout in " + config.getValue("timeout") + " seconds.").formatted(Formatting.LIGHT_PURPLE)),
+                        .append(Text.literal("\n此请求将在 " + config.getValue("timeout") + " 秒后超时.")
+                                .formatted(Formatting.LIGHT_PURPLE)),
                 false);
         return 1;
     }
 
-    public int tpaHere(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity tFrom) throws CommandSyntaxException {
+    public int tpaHere(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity tFrom)
+            throws CommandSyntaxException {
         final ServerPlayerEntity tTo = ctx.getSource().getPlayer();
 
         if (tTo.equals(tFrom)) {
-            tTo.sendMessage(Text.literal("You cannot request for you to teleport to yourself!").formatted(Formatting.RED), false);
+            tTo.sendMessage(Text.literal("你不能请求传送到你自己位置!").formatted(Formatting.RED), false);
             return 1;
         }
 
-        if (checkCooldown(tFrom)) return 1;
+        if (checkCooldown(tFrom))
+            return 1;
 
         TPARequest tr = new TPARequest(tFrom, tTo, true, (int) config.getValue("timeout") * 1000);
         if (activeTPA.stream().anyMatch(tpaRequest -> tpaRequest.equals(tr))) {
-            tTo.sendMessage(Text.literal("There is already an ongoing request like this!").formatted(Formatting.RED), false);
+            tTo.sendMessage(Text.literal("已有一个正在进行的请求!").formatted(Formatting.RED), false);
             return 1;
         }
         tr.setTimeoutCallback(() -> {
             activeTPA.remove(tr);
-            tTo.sendMessage(Text.literal("Your teleport request for " + tFrom.getEntityName() + " to you has timed out!").formatted(Formatting.RED), false);
-            tFrom.sendMessage(Text.literal("Teleport request for you to " + tTo.getEntityName() + " has timed out!").formatted(Formatting.RED), false);
+            tTo.sendMessage(Text.literal("你对 " + tFrom.getEntityName() + " 的传送请求已超时!").formatted(Formatting.RED),
+                    false);
+            tFrom.sendMessage(Text.literal("将您传送到 " + tTo.getEntityName() + " 的请求已超时!").formatted(Formatting.RED),
+                    false);
         });
         activeTPA.add(tr);
 
         tTo.sendMessage(
-                Text.literal("You have requested for ").formatted(Formatting.LIGHT_PURPLE)
+                Text.literal("你已经请求 ").formatted(Formatting.LIGHT_PURPLE)
                         .append(Text.literal(tFrom.getEntityName()).formatted(Formatting.AQUA))
-                        .append(Text.literal(" to teleport to you!\nTo cancel type ").formatted(Formatting.LIGHT_PURPLE))
-                        .append(Text.literal("/tpacancel [<player>]").styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpacancel " + tFrom.getEntityName()))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpacancel " + tFrom.getEntityName())))
+                        .append(Text.literal(" 传送到你身边!\n取消指令 ").formatted(Formatting.LIGHT_PURPLE))
+                        .append(Text.literal("/tpacancel [<player>]")
+                                .styled(s -> s
+                                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                                "/tpacancel " + tFrom.getEntityName()))
+                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                                Text.literal("/tpacancel " + tFrom.getEntityName())))
                                         .withColor(Formatting.GOLD)))
-                        .append(Text.literal("\nThis request will timeout in " + config.getValue("timeout") + " seconds.").formatted(Formatting.LIGHT_PURPLE)),
+                        .append(Text.literal("\n此请求将在 " + config.getValue("timeout") + " 秒后超时.")
+                                .formatted(Formatting.LIGHT_PURPLE)),
                 false);
 
         tFrom.sendMessage(
                 Text.literal(tTo.getEntityName()).formatted(Formatting.AQUA)
-                        .append(Text.literal(" has requested for you to teleport to them!").formatted(Formatting.LIGHT_PURPLE))
-                        .append(Text.literal("\nTo accept type ").formatted(Formatting.LIGHT_PURPLE))
-                        .append(Text.literal("/tpaaccept [<player>]").styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpaaccept " + tTo.getEntityName()))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpaaccept " + tTo.getEntityName())))
+                        .append(Text.literal(" 要求你传送到他那里!").formatted(Formatting.LIGHT_PURPLE))
+                        .append(Text.literal("\n接受指令 ").formatted(Formatting.LIGHT_PURPLE))
+                        .append(Text.literal("/tpaaccept [<player>]")
+                                .styled(s -> s
+                                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                                "/tpaaccept " + tTo.getEntityName()))
+                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                                Text.literal("/tpaaccept " + tTo.getEntityName())))
                                         .withColor(Formatting.GOLD)))
-                        .append(Text.literal("\nTo deny type ").formatted(Formatting.LIGHT_PURPLE))
-                        .append(Text.literal("/tpadeny [<player>]").styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpadeny " + tTo.getEntityName()))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpadeny " + tTo.getEntityName())))
+                        .append(Text.literal("\n拒绝指令 ").formatted(Formatting.LIGHT_PURPLE))
+                        .append(Text.literal("/tpadeny [<player>]")
+                                .styled(s -> s
+                                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                                "/tpadeny " + tTo.getEntityName()))
+                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                                Text.literal("/tpadeny " + tTo.getEntityName())))
                                         .withColor(Formatting.GOLD)))
-                        .append(Text.literal("\nThis request will timeout in " + config.getValue("timeout") + " seconds.").formatted(Formatting.LIGHT_PURPLE)),
+                        .append(Text.literal("\n此请求将在 " + config.getValue("timeout") + " 秒后超时.")
+                                .formatted(Formatting.LIGHT_PURPLE)),
                 false);
         return 1;
     }
@@ -254,8 +297,8 @@ public class FabricTPA implements ModInitializer {
         if (recentRequests.containsKey(tFrom.getUuid())) {
             long diff = Instant.now().getEpochSecond() - recentRequests.get(tFrom.getUuid());
             if (diff < (int) config.getValue("cooldown")) {
-                tFrom.sendMessage(Text.literal("You cannot make a request for ").append(String.valueOf((int) config.getValue("cooldown") - diff))
-                        .append(" more seconds!").formatted(Formatting.RED), false);
+                tFrom.sendMessage(Text.literal("你不能在").append(String.valueOf((int) config.getValue("cooldown") - diff))
+                        .append("秒内提出请求!").formatted(Formatting.RED), false);
                 return true;
             }
         }
@@ -272,9 +315,9 @@ public class FabricTPA implements ModInitializer {
 
         if (otr.isEmpty()) {
             if (action == TPAAction.CANCEL) {
-                rFrom.sendMessage(Text.literal("No ongoing request!").formatted(Formatting.RED), false);
+                rFrom.sendMessage(Text.literal("没有正在进行的请求!").formatted(Formatting.RED), false);
             } else {
-                rTo.sendMessage(Text.literal("No ongoing request!").formatted(Formatting.RED), false);
+                rTo.sendMessage(Text.literal("没有正在进行的请求!").formatted(Formatting.RED), false);
             }
             return null;
         }
@@ -282,104 +325,134 @@ public class FabricTPA implements ModInitializer {
         return otr.get();
     }
 
-    public int tpaAccept(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity rFrom) throws CommandSyntaxException {
+    public int tpaAccept(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity rFrom)
+            throws CommandSyntaxException {
         final ServerPlayerEntity rTo = ctx.getSource().getPlayer();
 
         if (rFrom == null) {
             TPARequest[] candidates;
             candidates = activeTPA.stream().filter(tpaRequest -> tpaRequest.rTo.equals(rTo)).toArray(TPARequest[]::new);
             if (candidates.length > 1) {
-                MutableText text = Text.literal("You currently have multiple active teleport requests! Please specify whose request to accept.\n").formatted(Formatting.LIGHT_PURPLE);
-                Arrays.stream(candidates).map(tpaRequest -> tpaRequest.rFrom.getEntityName()).forEach(name ->
-                        text.append(Text.literal(name).styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpaaccept " + name))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpaaccept " + name)))
-                                        .withColor(Formatting.GOLD))).append(" "));
+                MutableText text = Text.literal("您当前有多个活动的传送请求!请指定接受谁的请求.\n").formatted(Formatting.LIGHT_PURPLE);
+                Arrays.stream(candidates).map(tpaRequest -> tpaRequest.rFrom.getEntityName())
+                        .forEach(name -> text.append(Text.literal(name).styled(s -> s
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpaaccept " + name))
+                                .withHoverEvent(
+                                        new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpaaccept " + name)))
+                                .withColor(Formatting.GOLD))).append(" "));
                 rTo.sendMessage(text, false);
                 return 1;
             }
             if (candidates.length < 1) {
-                rTo.sendMessage(Text.literal("You currently don't have any teleport requests!").formatted(Formatting.RED), false);
+                rTo.sendMessage(Text.literal("你目前没有任何传送请求!").formatted(Formatting.RED), false);
                 return 1;
             }
             rFrom = candidates[0].rFrom;
         }
 
         TPARequest tr = getTPARequest(rFrom, rTo, TPAAction.ACCEPT);
-        if (tr == null) return 1;
-        TeleportUtils.genericTeleport((boolean) config.getValue("bossbar"), (int) config.getValue("stand-still"), rFrom, () -> {
-            if (tr.tFrom.isRemoved() || tr.tTo.isRemoved()) tr.refreshPlayers();
-            tr.tFrom.teleport(tr.tTo.getWorld(), tr.tTo.getX(), tr.tTo.getY(), tr.tTo.getZ(), tr.tTo.getYaw(), tr.tTo.getPitch());
-            switch ((TPACooldownMode) config.getValue("cooldown-mode")) {
-                case BothUsers -> {
-                    recentRequests.put(tr.tFrom.getUuid(), Instant.now().getEpochSecond());
-                    recentRequests.put(tr.tTo.getUuid(), Instant.now().getEpochSecond());
-                }
-                case WhoInitiated -> recentRequests.put(tr.rFrom.getUuid(), Instant.now().getEpochSecond());
-                case WhoTeleported -> recentRequests.put(tr.tFrom.getUuid(), Instant.now().getEpochSecond());
-            }
-        });
+        if (tr == null)
+            return 1;
+        TeleportUtils.genericTeleport((boolean) config.getValue("bossbar"), (int) config.getValue("stand-still"), rFrom,
+                () -> {
+                    if (tr.tFrom.isRemoved() || tr.tTo.isRemoved())
+                        tr.refreshPlayers();
+                    this.backWorldCoordinate.put(tr.tFrom.getUuid(),
+                            new WorldCoordinate(tr.tFrom.getServerWorld(), tr.tFrom.getX(), tr.tFrom.getY(),
+                                    tr.tFrom.getZ(),
+                                    tr.tFrom.getYaw(), tr.tFrom.getPitch()));
+                    tr.tFrom.teleport(tr.tTo.getServerWorld(), tr.tTo.getX(), tr.tTo.getY(), tr.tTo.getZ(),
+                            tr.tTo.getYaw(), tr.tTo.getPitch());
+                    switch ((TPACooldownMode) config.getValue("cooldown-mode")) {
+                        case BothUsers -> {
+                            recentRequests.put(tr.tFrom.getUuid(), Instant.now().getEpochSecond());
+                            recentRequests.put(tr.tTo.getUuid(), Instant.now().getEpochSecond());
+                        }
+                        case WhoInitiated -> recentRequests.put(tr.rFrom.getUuid(), Instant.now().getEpochSecond());
+                        case WhoTeleported -> recentRequests.put(tr.tFrom.getUuid(), Instant.now().getEpochSecond());
+                    }
+                });
 
         tr.cancelTimeout();
         activeTPA.remove(tr);
-        tr.rTo.sendMessage(Text.literal("You have accepted the teleport request!"), false);
+        tr.rTo.sendMessage(Text.literal("您已接受传送请求!"), false);
         tr.rFrom.sendMessage(Text.literal(tr.rTo.getEntityName()).formatted(Formatting.AQUA)
-                .append(Text.literal(" has accepted the teleportation request!").formatted(Formatting.LIGHT_PURPLE)), false);
+                .append(Text.literal(" 已经接受了传送请求!").formatted(Formatting.LIGHT_PURPLE)), false);
         return 1;
     }
 
+    public int tpaBack(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+        final ServerPlayerEntity rFrom = ctx.getSource().getPlayer();
+        if (!backWorldCoordinate.containsKey(rFrom.getUuid())) {
+            rFrom.sendMessage(Text.literal("你目前没有可以返回的传送坐标!").formatted(Formatting.RED), false);
+            return 1;
+        }
+        WorldCoordinate worldCoordinate = backWorldCoordinate.get(rFrom.getUuid());
+        rFrom.teleport(worldCoordinate.targetWorld, worldCoordinate.x, worldCoordinate.y, worldCoordinate.z,
+                worldCoordinate.yaw, worldCoordinate.pitch);
+        backWorldCoordinate.remove(rFrom.getUuid());
+        rFrom.sendMessage(Text.literal("已返回之前的位置!"), false);
+        return 1;
+    }
 
-    public int tpaDeny(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity rFrom) throws CommandSyntaxException {
+    public int tpaDeny(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity rFrom)
+            throws CommandSyntaxException {
         final ServerPlayerEntity rTo = ctx.getSource().getPlayer();
 
         if (rFrom == null) {
             TPARequest[] candidates;
             candidates = activeTPA.stream().filter(tpaRequest -> tpaRequest.rTo.equals(rTo)).toArray(TPARequest[]::new);
             if (candidates.length > 1) {
-                MutableText text = Text.literal("You currently have multiple active teleport requests! Please specify whose request to deny.\n").formatted(Formatting.LIGHT_PURPLE);
-                Arrays.stream(candidates).map(tpaRequest -> tpaRequest.rFrom.getEntityName()).forEach(name ->
-                        text.append(Text.literal(name).styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpadeny " + name))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpadeny " + name)))
-                                        .withColor(Formatting.GOLD))).append(" "));
+                MutableText text = Text.literal("您当前有多个活动的传送请求!请指定要拒绝谁的请求.\n").formatted(Formatting.LIGHT_PURPLE);
+                Arrays.stream(candidates).map(tpaRequest -> tpaRequest.rFrom.getEntityName())
+                        .forEach(name -> text.append(Text.literal(name).styled(
+                                s -> s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpadeny " + name))
+                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                                Text.literal("/tpadeny " + name)))
+                                        .withColor(Formatting.GOLD)))
+                                .append(" "));
                 rTo.sendMessage(text, false);
                 return 1;
             }
             if (candidates.length < 1) {
-                rTo.sendMessage(Text.literal("You currently don't have any teleport requests!").formatted(Formatting.RED), false);
+                rTo.sendMessage(Text.literal("你目前没有任何传送请求!").formatted(Formatting.RED), false);
                 return 1;
             }
             rFrom = candidates[0].rFrom;
         }
 
         TPARequest tr = getTPARequest(rFrom, rTo, TPAAction.DENY);
-        if (tr == null) return 1;
+        if (tr == null)
+            return 1;
         tr.cancelTimeout();
         activeTPA.remove(tr);
-        tr.rTo.sendMessage(Text.literal("You have cancelled the teleport request!"), false);
+        tr.rTo.sendMessage(Text.literal("您已取消传送请求!"), false);
         tr.rFrom.sendMessage(Text.literal(tr.rTo.getEntityName()).formatted(Formatting.AQUA)
-                .append(Text.literal(" has cancelled the teleportation request!").formatted(Formatting.RED)), false);
+                .append(Text.literal(" 取消了传送请求!").formatted(Formatting.RED)), false);
         return 1;
     }
 
-    public int tpaCancel(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity rTo) throws CommandSyntaxException {
+    public int tpaCancel(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity rTo)
+            throws CommandSyntaxException {
         final ServerPlayerEntity rFrom = ctx.getSource().getPlayer();
 
         if (rTo == null) {
             TPARequest[] candidates;
-            candidates = activeTPA.stream().filter(tpaRequest -> tpaRequest.rFrom.equals(rFrom)).toArray(TPARequest[]::new);
+            candidates = activeTPA.stream().filter(tpaRequest -> tpaRequest.rFrom.equals(rFrom))
+                    .toArray(TPARequest[]::new);
             if (candidates.length > 1) {
-                MutableText text = Text.literal("You currently have multiple active teleport requests! Please specify which request to cancel.\n").formatted(Formatting.LIGHT_PURPLE);
-                Arrays.stream(candidates).map(tpaRequest -> tpaRequest.rTo.getEntityName()).forEach(name ->
-                        text.append(Text.literal(name).styled(s ->
-                                s.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpacancel " + name))
-                                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpacancel " + name)))
-                                        .withColor(Formatting.GOLD))).append(" "));
+                MutableText text = Text.literal("您当前有多个活动的传送请求!请指定要取消的请求。\n").formatted(Formatting.LIGHT_PURPLE);
+                Arrays.stream(candidates).map(tpaRequest -> tpaRequest.rTo.getEntityName())
+                        .forEach(name -> text.append(Text.literal(name).styled(s -> s
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tpacancel " + name))
+                                .withHoverEvent(
+                                        new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("/tpacancel " + name)))
+                                .withColor(Formatting.GOLD))).append(" "));
                 rFrom.sendMessage(text, false);
                 return 1;
             }
             if (candidates.length < 1) {
-                rFrom.sendMessage(Text.literal("You currently don't have any teleport requests!").formatted(Formatting.RED), false);
+                rFrom.sendMessage(Text.literal("你目前没有任何传送请求!").formatted(Formatting.RED), false);
                 return 1;
             }
             rTo = candidates[0].rTo;
@@ -387,15 +460,15 @@ public class FabricTPA implements ModInitializer {
 
         System.out.printf("%s -> %s\n", rFrom.getEntityName(), rTo.getEntityName());
         TPARequest tr = getTPARequest(rFrom, rTo, TPAAction.CANCEL);
-        if (tr == null) return 1;
+        if (tr == null)
+            return 1;
         tr.cancelTimeout();
         activeTPA.remove(tr);
-        tr.rFrom.sendMessage(Text.literal("You have cancelled the teleport request!").formatted(Formatting.RED), false);
+        tr.rFrom.sendMessage(Text.literal("您已取消传送请求!").formatted(Formatting.RED), false);
         tr.rTo.sendMessage(Text.literal(tr.rFrom.getEntityName()).formatted(Formatting.AQUA)
-                .append(Text.literal(" has cancelled the teleportation request!").formatted(Formatting.RED)), false);
+                .append(Text.literal(" 取消了传送请求!").formatted(Formatting.RED)), false);
         return 1;
     }
-
 
     enum TPACooldownMode {
         WhoTeleported, WhoInitiated, BothUsers
@@ -438,8 +511,10 @@ public class FabricTPA implements ModInitializer {
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+            if (this == o)
+                return true;
+            if (o == null || getClass() != o.getClass())
+                return false;
             TPARequest that = (TPARequest) o;
             return tFrom.equals(that.tFrom) &&
                     tTo.equals(that.tTo);
@@ -466,6 +541,25 @@ public class FabricTPA implements ModInitializer {
             this.rFrom = this.tpaHere ? tTo : tFrom;
             this.rTo = this.tpaHere ? tFrom : tTo;
             assert tFrom != null && tTo != null;
+        }
+    }
+
+    static class WorldCoordinate {
+        net.minecraft.server.world.ServerWorld targetWorld;
+        double x;
+        double y;
+        double z;
+        float yaw;
+        float pitch;
+
+        public WorldCoordinate(net.minecraft.server.world.ServerWorld targetWorld, double x, double y, double z,
+                float yaw, float pitch) {
+            this.targetWorld = targetWorld;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.yaw = yaw;
+            this.pitch = pitch;
         }
     }
 

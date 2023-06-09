@@ -52,7 +52,7 @@ public class TeleportUtils {
                         finalStandStillBar.removePlayer(whoFinal[0]);
                         server.getBossBarManager().remove(finalStandStillBar);
                     } else {
-                        whoFinal[0].sendMessage(Text.literal("Teleporting!").formatted(Formatting.LIGHT_PURPLE), true);
+                        whoFinal[0].sendMessage(Text.literal("传送!").formatted(Formatting.LIGHT_PURPLE), true);
                     }
                     new Timer().schedule(new TimerTask() {
                         @Override
@@ -79,13 +79,13 @@ public class TeleportUtils {
                 if (bossBar) {
                     finalStandStillBar.setPercent((float) (counter[0] / standStillTime));
                 } else {
-                    whoFinal[0].sendMessage(Text.literal("Stand still for ").formatted(Formatting.LIGHT_PURPLE)
+                    whoFinal[0].sendMessage(Text.literal("在此站立 ").formatted(Formatting.LIGHT_PURPLE)
                             .append(Text.literal(Integer.toString((int) Math.floor(counter[0] + 1))).formatted(Formatting.GOLD))
-                            .append(Text.literal(" more seconds!").formatted(Formatting.LIGHT_PURPLE)), true);
+                            .append(Text.literal(" 秒钟!").formatted(Formatting.LIGHT_PURPLE)), true);
                 }
-                whoFinal[0].networkHandler.sendPacket(new SubtitleS2CPacket(Text.literal("Please stand still...")
+                whoFinal[0].networkHandler.sendPacket(new SubtitleS2CPacket(Text.literal("请站着别动...")
                         .formatted(Formatting.RED, Formatting.ITALIC)));
-                whoFinal[0].networkHandler.sendPacket(new TitleS2CPacket(Text.literal("Teleporting!")
+                whoFinal[0].networkHandler.sendPacket(new TitleS2CPacket(Text.literal("传送!")
                         .formatted(Formatting.LIGHT_PURPLE, Formatting.BOLD)));
             }
         }, 0, 250);

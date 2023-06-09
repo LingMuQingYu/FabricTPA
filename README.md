@@ -15,6 +15,7 @@ All commands except `/tpaconfig` don't require OP permissions. They're meant for
 `/tpacancel [<player>]` - Cancel a tpa or tpahere request you've initiated, argument required if multiple ongoing  
 `/tpaaccept [<player>]` - Accept a tpa or tpahere request you've received, argument required if multiple ongoing  
 `/tpadeny [<player>]` - Deny a tpa or tpahere request you've received, argument required if multiple ongoing
+`/back` - Return to previous position  
 
 `/tpaconfig [<option> [<value>]]` - Get/Set config options, more info below (Requres OP permission level 2)
 
