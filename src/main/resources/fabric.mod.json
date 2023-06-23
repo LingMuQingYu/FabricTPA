@@ -22,7 +22,7 @@
       "eu.codedsakura.fabrictpa.FabricTPA"
     ]
   },
-  "mixins": [],
+  "mixins": ["fabric-tpa.mixins.json"],
   "depends": {
     "fabricloader": "*",
     "fabric": "*",
