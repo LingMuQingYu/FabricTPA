@@ -1,6 +1,7 @@
 package eu.codedsakura.fabrictpa;
 
 import com.mojang.brigadier.arguments.ArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -10,22 +11,20 @@ import eu.codedsakura.mods.ConfigUtils;
 import eu.codedsakura.mods.TeleportUtils;
 import eu.codedsakura.mods.callback.DieRegistrationCallback;
 import eu.codedsakura.mods.fpapiutils.FPAPIUtilsWrapper;
-import eu.codedsakura.mods.mixin.DieRegistrationMixin;
-import eu.codedsakura.mods.mixin.ServerPlayerMixin;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.command.argument.EntityArgumentType;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
+import net.minecraft.world.World;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -89,6 +88,18 @@ public class FabricTPA implements ModInitializer {
                                                               SuggestionsBuilder builder) {
         IStoreHome player = (IStoreHome) context.getSource().getPlayer();
         return filterSuggestionsByInput(builder, player == null ? new ArrayList<>() : player.getHomeNames());
+    }
+
+    private CompletableFuture<Suggestions> getBackSuggestions(CommandContext<ServerCommandSource> context,
+                                                              SuggestionsBuilder builder) {
+        IStoreHome player = (IStoreHome) context.getSource().getPlayer();
+        List<String> list = new ArrayList<>();
+        if (player != null) {
+            for (int i = 0; i < player.getOldWorldCoordinates().size(); i++) {
+                list.add(String.valueOf(i + 1));
+            }
+        }
+        return filterSuggestionsByInput(builder,  list);
     }
 
     static class CooldownModeConfigValue extends ConfigUtils.IConfigValue<TPACooldownMode> {
@@ -167,29 +178,40 @@ public class FabricTPA implements ModInitializer {
                     .then(argument("target", EntityArgumentType.player()).suggests(this::getTPASenderSuggestions)
                             .executes(ctx -> tpaCancel(ctx, getPlayer(ctx, "target"))))
                     .executes(ctx -> tpaCancel(ctx, null)));
+            dispatcher.register(literal("history")
+                    .requires(FPAPIUtilsWrapper.require("fabrictpa.home", true))
+                    .executes(this::tpaBackList));
             dispatcher.register(literal("back")
-                    .requires(FPAPIUtilsWrapper.require("fabrictpa.tpa", true))
-                    .executes(this::tpaBack));
+                    .requires(FPAPIUtilsWrapper.require("fabrictpa.home", true))
+                    .executes(this::tpaBack)
+                    .then(argument("num", IntegerArgumentType.integer(1, 9)).suggests(this::getBackSuggestions)
+                            .executes(this::tpaBack)));
             dispatcher.register(config.generateCommand("tpaconfig", FPAPIUtilsWrapper.require("fabrictpa.config", 2)));
 
             dispatcher.register(literal("sethome")
-                    .requires(FPAPIUtilsWrapper.require("fabrictpa.tpa", true))
+                    .requires(FPAPIUtilsWrapper.require("fabrictpa.home", true))
                     .then(argument("target", StringArgumentType.string()).suggests(this::getHomeSuggestions)
                             .executes(this::setHome))
                     .executes(this::setHome));
             dispatcher.register(literal("home")
-                    .requires(FPAPIUtilsWrapper.require("fabrictpa.tpa", true))
+                    .requires(FPAPIUtilsWrapper.require("fabrictpa.home", true))
                     .then(argument("target", StringArgumentType.string()).suggests(this::getHomeSuggestions)
                             .executes(this::home))
                     .executes(this::home));
             dispatcher.register(literal("delhome")
-                    .requires(FPAPIUtilsWrapper.require("fabrictpa.tpa", true))
+                    .requires(FPAPIUtilsWrapper.require("fabrictpa.home", true))
                     .then(argument("target", StringArgumentType.string()).suggests(this::getHomeSuggestions)
                             .executes(this::delHome))
                     .executes(this::delHome));
             dispatcher.register(literal("tpahelp")
                     .requires(FPAPIUtilsWrapper.require("fabrictpa.tpa", true))
                     .executes(this::tpaHelp));
+
+            dispatcher.register(literal("t")
+                    .requires(FPAPIUtilsWrapper.require("fabrictpa.tell", true))
+                    .then(argument("target", EntityArgumentType.player()).suggests(this::getTPAInitSuggestions)
+                            .then(argument("message", StringArgumentType.greedyString())
+                                    .executes(ctx -> tell(ctx, getPlayer(ctx, "target"))))));
         });
 
         DieRegistrationCallback.EVENT.register(this::playerDie);
@@ -430,10 +452,18 @@ public class FabricTPA implements ModInitializer {
         return 1;
     }
 
-    public int tpaBack(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+    public int tpaBack(CommandContext<ServerCommandSource> ctx) {
         final ServerPlayerEntity rFrom = ctx.getSource().getPlayer();
         if (rFrom == null) return 1;
-        WorldCoordinate worldCoordinate = ((IStoreHome) rFrom).getOldWorldCoordinate();
+        IStoreHome player = (IStoreHome) ctx.getSource().getPlayer();
+        WorldCoordinate worldCoordinate;
+        try {
+            int num = (player.getOldWorldCoordinates().size()) - ctx.getArgument("num", Integer.class);
+            System.out.println(num);
+            worldCoordinate = player.getOldWorldCoordinates().get(num);
+        } catch (Exception ignored) {
+            worldCoordinate = player.getOldWorldCoordinate();
+        }
         if (worldCoordinate == null) {
             rFrom.sendMessage(Text.literal("你目前没有可以返回的传送坐标!").formatted(Formatting.RED), false);
             return 1;
@@ -443,6 +473,26 @@ public class FabricTPA implements ModInitializer {
                 worldCoordinate.yaw, worldCoordinate.pitch);
         ((IStoreHome) rFrom).setOldWorldCoordinate(oldCoordinate);
         rFrom.sendMessage(Text.literal("已返回之前的位置!再次发送指令</back>可返回传送前位置!").formatted(Formatting.GREEN), false);
+        return 1;
+    }
+
+    public int tpaBackList(CommandContext<ServerCommandSource> ctx) {
+        IStoreHome player = (IStoreHome) ctx.getSource().getPlayer();
+        if (player != null) {
+            ServerPlayerEntity playerEntity = ctx.getSource().getPlayer();
+            playerEntity.sendMessage(Text.literal("-----------历史传送-----------").formatted(Formatting.GREEN), false);
+            for (int i = player.getOldWorldCoordinates().size() - 1; i >= 0; i--) {
+                WorldCoordinate world = player.getOldWorldCoordinates().get(i);
+                RegistryKey<World> worldRegistryKey = world.getTargetWorld().getRegistryKey();
+                String worldName = "未知";
+                switch (worldRegistryKey.getValue().getPath()) {
+                    case "overworld" -> worldName = "世界";
+                    case "the_nether" -> worldName = "下界";
+                    case "the_end" -> worldName = "末地";
+                }
+                playerEntity.sendMessage(Text.literal(String.format("%2s 世界：%s 坐标：%-5.0f %-5.0f %-5.0f", player.getOldWorldCoordinates().size() - i, worldName, world.getX(), world.getY(), world.getZ())), false);
+            }
+        }
         return 1;
     }
 
@@ -570,6 +620,22 @@ public class FabricTPA implements ModInitializer {
         return 1;
     }
 
+    private int tell(CommandContext<ServerCommandSource> ctx, ServerPlayerEntity target) {
+        ServerPlayerEntity player = ctx.getSource().getPlayer();
+        String msg = ctx.getArgument("message", String.class);
+        String name;
+        if (player != null) {
+            name = player.getName().getString();
+            player.sendMessage(Text.literal(String.format("<私聊%s> ", target.getName().getString())).formatted(Formatting.YELLOW)
+                    .append(Text.literal(msg).formatted(Formatting.WHITE)), false);
+        } else {
+            name = "管理员";
+        }
+        target.sendMessage(Text.literal(String.format("<%s私聊我> ", name)).formatted(Formatting.YELLOW)
+                .append(Text.literal(msg).formatted(Formatting.WHITE)), false);
+        return 1;
+    }
+
     private String getStringTarget(CommandContext<ServerCommandSource> ctx) {
         try {
             String target = ctx.getArgument("target", String.class);
@@ -586,6 +652,8 @@ public class FabricTPA implements ModInitializer {
             helps.add("</tpa> 请求传送到他人身边(地毯假人可以直接传)。");
             helps.add("</tpahere> 请求他人传送到自己身边。");
             helps.add("</back> 可以返回传送前或死亡前的位置。");
+            helps.add("</history> 查看历史传送位置，使用</back 序号>可回到对应地点。");
+            helps.add("</t> 快捷私聊。");
             helps.add("</sethome> 最多设置3处为家，重复名称则覆盖，默认名称为[home]。");
             helps.add("</home> 快速回家，默认名称为[home]。");
             helps.add("</delhome> 删除此处家，默认名称为[home]。");

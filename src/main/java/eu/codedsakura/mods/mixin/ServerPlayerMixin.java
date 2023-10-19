@@ -1,12 +1,10 @@
 package eu.codedsakura.mods.mixin;
 
-import com.mojang.authlib.GameProfile;
 import eu.codedsakura.fabrictpa.FabricTPA;
 import eu.codedsakura.fabrictpa.IStoreHome;
 import eu.codedsakura.fabrictpa.WorldCoordinate;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.registry.RegistryKey;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.World;
@@ -16,9 +14,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Mixin(ServerPlayerEntity.class)
 public class ServerPlayerMixin implements IStoreHome {
@@ -27,7 +27,7 @@ public class ServerPlayerMixin implements IStoreHome {
     @Unique
     public Map<String, WorldCoordinate> worldCoordinateMap = new HashMap<>();
 
-    public WorldCoordinate oldWorldCoordinate = null;
+    public List<WorldCoordinate> oldWorldCoordinate = new ArrayList<>();
 
     private static final Map<String, RegistryKey<World>> worldMap = new HashMap<>();
 
@@ -54,10 +54,10 @@ public class ServerPlayerMixin implements IStoreHome {
                 && oldNbt.contains("yaw")
                 && oldNbt.contains("pitch")) {
             ServerWorld world = ((ServerPlayerEntity) (Object) this).getServerWorld().getServer().getWorld(worldMap.getOrDefault(oldNbt.getString("world"), World.OVERWORLD));
-            this.oldWorldCoordinate = new WorldCoordinate(world, oldNbt.getDouble("x"), oldNbt.getDouble("y"),
+            setOldWorldCoordinate(new WorldCoordinate(world, oldNbt.getDouble("x"), oldNbt.getDouble("y"),
                     oldNbt.getDouble("z"),
                     oldNbt.getFloat("yaw"),
-                    oldNbt.getFloat("pitch"));
+                    oldNbt.getFloat("pitch")));
         }
 
 
@@ -95,8 +95,8 @@ public class ServerPlayerMixin implements IStoreHome {
             });
             tag.put(MOD_ID, data);
         }
-        if (oldWorldCoordinate != null) {
-            tag.put(FabricTPA.QUICK_BACK, convertNbt(oldWorldCoordinate));
+        if (!oldWorldCoordinate.isEmpty()) {
+            tag.put(FabricTPA.QUICK_BACK, convertNbt(getOldWorldCoordinate()));
         }
     }
 
@@ -122,13 +122,29 @@ public class ServerPlayerMixin implements IStoreHome {
     }
 
     @Override
-    public void setOldWorldCoordinate(WorldCoordinate worldCoordinate) {
-        this.oldWorldCoordinate = worldCoordinate;
+    public void setOldWorldCoordinate(WorldCoordinate wc) {
+        this.oldWorldCoordinate = this.oldWorldCoordinate.stream()
+                .filter(e ->
+                        !(e.getTargetWorld().getRegistryKey().getValue().getPath().equals(wc.getTargetWorld().getRegistryKey().getValue().getPath()) &&
+                                distance(e.getX(), e.getY(), e.getZ(), wc.getX(), wc.getY(), wc.getZ()) <= 64)
+                )
+                .collect(Collectors.toList());
+        this.oldWorldCoordinate.add(wc);
+        if (this.oldWorldCoordinate.size() >= 10) {
+            this.oldWorldCoordinate = this.oldWorldCoordinate.subList(this.oldWorldCoordinate.size() - 9, this.oldWorldCoordinate.size());
+        }
+    }
+
+    public double distance(double x1,double y1,double z1,double x2,double y2,double z2){
+        return Math.sqrt(Math.pow(x1-x2, 2)+Math.pow(y1-y2, 2)+Math.pow(z1-z2, 2));
     }
 
     @Override
     public WorldCoordinate getOldWorldCoordinate() {
-        return this.oldWorldCoordinate;
+        if (oldWorldCoordinate.isEmpty()) {
+            return null;
+        }
+        return oldWorldCoordinate.get(oldWorldCoordinate.size() - 1);
     }
 
     @Override
@@ -160,5 +176,10 @@ public class ServerPlayerMixin implements IStoreHome {
     @Override
     public List<String> getHomeNames() {
         return worldCoordinateMap.keySet().stream().toList();
+    }
+
+    @Override
+    public List<WorldCoordinate> getOldWorldCoordinates() {
+        return oldWorldCoordinate;
     }
 }

@@ -17,4 +17,6 @@ public interface IStoreHome {
 
     List<String> getHomeNames();
 
+    List<WorldCoordinate> getOldWorldCoordinates();
+
 }
